@@ -1,4 +1,4 @@
-import { CraftsmenWard, MerchantWard, Cathedral, AdministrationWard, Slum, PatriciateWard, Market, MilitaryWard, Park, GateWard, Farm, Ward } from 'com/watabou/towngenerator/wards';
+
 import { CurtainWall } from './CurtainWall';
 import { Patch } from './Patch';
 import { Topology } from './Topology';
@@ -9,6 +9,18 @@ import { MathUtils } from '$lib/utils/MathUtils';
 import { Polygon } from '$lib/geom/Polygon';
 import { Segment } from '$lib/geom/Segment';
 import { Castle } from '../wards/Castle';
+import { Ward } from '../wards/Ward';
+import { MerchantWard } from '../wards/MerchantWard';
+import { CraftsmenWard } from '../wards/CraftsmenWard';
+import { Market } from '../wards/Market';
+import { AdministrationWard } from '../wards/AdministrationWard';
+import { Slum } from '../wards/Slum';
+import { MilitaryWard } from '../wards/MilitaryWard';
+import { PatriciateWard } from '../wards/PatriciateWard';
+import { Park } from '../wards/Park';
+import { Cathedral } from '../wards/Cathedral';
+import { GateWard } from '../wards/GateWard';
+import { Farm } from '../wards/Farm';
 
 type Street = Polygon;
 

@@ -7,7 +7,7 @@ import type { Model } from '../building/Model';
 import type { Point } from '$lib/geom/Point';
 import { GeomUtils } from '$lib/geom/GeomUtils';
 
-export abstract class Ward {
+export class Ward {
     // Static constants
     public static readonly MAIN_STREET: number = 2.0;
     public static readonly REGULAR_STREET: number = 1.0;
