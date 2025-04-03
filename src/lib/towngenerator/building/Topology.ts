@@ -1,5 +1,5 @@
 import { Graph, Node } from "$lib/geom/Graph";
-import type { Point } from "$lib/geom/Point";
+import type { PatchPoint } from "$lib/geom/PatchPolygon";
 import type { Model } from "./Model";
 
 
@@ -8,10 +8,10 @@ export class Topology {
 
 	private graph: Graph;
 
-	public pt2node: Map<Point, Node>;
-	public node2pt: Map<Node, Point>;
+	public pt2node: Map<PatchPoint, Node>;
+	public node2pt: Map<Node, PatchPoint>;
 
-	private blocked: Point[];
+	private blocked: PatchPoint[];
 
 	public inner: Node[];
 	public outer: Node[];
@@ -32,11 +32,11 @@ export class Topology {
 			this.blocked = this.blocked.concat(model.citadel.shape.vertices);
 		}
 		if (model.wall != null) {
-			this.blocked = this.blocked.concat(model.wall.shape);
+			this.blocked = this.blocked.concat(model.wall.shape.vertices);
 		}
 		this.blocked = this.blocked.filter((p) => !model.gates.includes(p));
 
-		const border = model.border.shape;
+		const border = model.border!.shape;
 
 		for (const p of model.patches) {
 			const withinCity = p.withinCity;
@@ -50,14 +50,14 @@ export class Topology {
 				const n0 = n1;
 				n1 = this.processPoint(v1);
 
-				if (n0 != null && !border.includes(v0)) {
+				if (n0 != null && !border.vertices.includes(v0)) {
 					if (withinCity) {
 						this.inner.push(n0);
 					} else {
 						this.outer.push(n0);
 					}
 				}
-				if (n1 != null && !border.includes(v1)) {
+				if (n1 != null && !border.vertices.includes(v1)) {
 					if (withinCity) {
 						this.inner.push(n1);
 					} else {
@@ -72,7 +72,7 @@ export class Topology {
 		}
 	}
 
-	private processPoint(v: Point): Node | null {
+	private processPoint(v: PatchPoint): Node | null {
 		let n: Node;
 
 		if (this.pt2node.has(v)) {
@@ -86,7 +86,7 @@ export class Topology {
 		return this.blocked.includes(v) ? null : n;
 	}
 
-	public buildPath(from: Point, to: Point, exclude: Node[] = []): Point[] | null {
+	public buildPath(from: PatchPoint, to: PatchPoint, exclude: Node[] = []): PatchPoint[] | null {
 		const path = this.graph.aStar(this.pt2node.get(from)!, this.pt2node.get(to)!, exclude);
 		return path == null ? null : path.map((n) => this.node2pt.get(n)!);
 	}

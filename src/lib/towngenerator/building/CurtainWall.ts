@@ -1,32 +1,30 @@
+import type { PatchPoint, PatchPolygon } from "$lib/geom/PatchPolygon";
 import { Point } from "$lib/geom/Point";
-import type { Polygon } from "$lib/geom/Polygon";
 import { Random } from "$lib/utils/Random";
 import { Model } from "./Model";
 import { Patch } from "./Patch";
 
 export class CurtainWall {
-	shape: Polygon;
+	shape: PatchPolygon;
 	segments: boolean[];
-	gates: Point[] = [];
-	towers: Point[] = [];
+	gates: PatchPoint[] = [];
+	towers: PatchPoint[] = [];
 
 	private real: boolean;
 	private patches: Patch[];
 
-	constructor(real: boolean, model: Model, patches: Patch[], reserved: Point[]) {
-		this.real = true;
+	constructor(real: boolean, model: Model, patches: Patch[], reserved: PatchPoint[]) {
+		this.real = real;
 		this.patches = patches;
 
 		if (patches.length === 1) {
 			this.shape = patches[0].shape;
 		} else {
-			this.shape = Model.findCircumference(patches);
+			this.shape = Patch.findCircumference(patches);
 
 			if (real) {
 				const smoothFactor = Math.min(1, 40 / patches.length);
-				this.shape.vertices = (this.shape.vertices.map((v) =>
-					reserved.includes(v) ? v : this.shape.smoothVertex(v, smoothFactor)
-				));
+				this.shape.smoothVertexes(smoothFactor, this.shape.vertices.filter(v => !reserved.includes(v)));
 			}
 		}
 
@@ -35,68 +33,81 @@ export class CurtainWall {
 		this.buildGates(real, model, reserved);
 	}
 
-	private buildGates(real: boolean, model: Model, reserved: Point[]): void {
+	private buildGates(real: boolean, model: Model, reserved: PatchPoint[]): void {
 		this.gates = [];
 
-		const entrances = this.patches.length > 1
+
+		// we search for all possible entrances
+		// an entrance is a vertex that is on the border of the shape
+		// and is not part of the reserved list (the citadel)
+		// and is part of at least two patches of the inside of the city.
+		// This means it is not a corner of the shape
+		// special case: if there is only one patch, we take all the vertices
+		// of the shape that are not reserved
+		const possibleEntrances = this.patches.length > 1
 			? this.shape.vertices.filter((v) =>
-				!reserved.includes(v) && this.patches.filter((p) => p.shape.contains(v)).length > 1
+				!reserved.includes(v) && this.patches.filter((p) => p.shape.containsDefiningVertex(v)).length > 1
 			)
 			: this.shape.vertices.filter((v) => !reserved.includes(v));
 
-		if (entrances.length === 0) {
+		if (possibleEntrances.length === 0) {
 			throw new Error("Bad walled area shape!");
 		}
 
 		do {
-			const index = Random.int(0, entrances.length);
-			const gate = entrances[index];
+			// we take a random entrance from the list of
+			// possible entrances and make it a gate
+			const index = Random.int(0, possibleEntrances.length);
+			const gate = possibleEntrances[index];
 			this.gates.push(gate);
 
 			if (real) {
 				const outerWards = model.patchByVertex(gate).filter((w) => !this.patches.includes(w));
 				if (outerWards.length === 1) {
+					// if we have only one outer ward, we split it in two
+					// otherwise, we could not make a street
 					const outer = outerWards[0];
 					if (outer.shape.vertices.length > 3) {
-						const wall = this.shape.next(gate).subtract(this.shape.prev(gate));
+						// we need at least 4 vertices otherwise a split is not possible
+						const wall = this.shape.next(gate).toPoint().subtract(this.shape.prev(gate));
+						// wall is the direction vector of the wall, and 
+						// out is the ortogonal vector of the wall pointing outwards
 						const out = new Point(wall.y, -wall.x);
 
 						const farthest = outer.shape.vertices.reduce((max, v) => {
-							if (this.shape.contains(v) || reserved.includes(v)) {
+							if (this.shape.containsDefiningVertex(v) || reserved.includes(v)) {
 								return max;
 							}
-							const dir = v.subtract(gate);
+							const dir = v.toPoint().subtract(gate);
 							const score = dir.dot(out) / dir.length;
 							return score > max.score ? { point: v, score } : max;
-						}, { point: null as Point | null, score: Number.NEGATIVE_INFINITY }).point;
+						}, { point: null as PatchPoint | null, score: Number.NEGATIVE_INFINITY }).point;
 
 						if (farthest == null) {
 							throw new Error("Bad walled area shape!");
 						}
-
-						const newPatches = outer.shape.split(gate, farthest).map((half) => new Patch(half.vertices));
-						model.patches.splice(model.patches.indexOf(outer), 1, ...newPatches);
+						model.splitPatch(outer, gate, farthest);
 					}
 				}
 			}
 
 			if (index === 0) {
-				entrances.splice(0, 2);
-				entrances.pop();
-			} else if (index === entrances.length - 1) {
-				entrances.splice(index - 1, 2);
-				entrances.shift();
+				possibleEntrances.splice(0, 2);
+				possibleEntrances.pop();
+			} else if (index === possibleEntrances.length - 1) {
+				possibleEntrances.splice(index - 1, 2);
+				possibleEntrances.shift();
 			} else {
-				entrances.splice(index - 1, 3);
+				possibleEntrances.splice(index - 1, 3);
 			}
-		} while (entrances.length >= 3);
+		} while (possibleEntrances.length >= 3);
 
 		if (this.gates.length === 0) {
 			throw new Error("Bad walled area shape!");
 		}
 
 		if (real) {
-			this.gates.forEach((gate) => gate.set(this.shape.smoothVertex(gate)));
+			this.gates.forEach((gate) => this.shape.smoothVertexes([gate]));
 		}
 	}
 
@@ -117,7 +128,7 @@ export class CurtainWall {
 		return this.shape.vertices.reduce((radius, v) => Math.max(radius, v.length), 0);
 	}
 
-	public bordersBy(p: Patch, v0: Point, v1: Point): boolean {
+	public bordersBy(p: Patch, v0: PatchPoint, v1: PatchPoint): boolean {
 		const index = this.patches.includes(p)
 			? this.shape.findEdge(v0, v1)
 			: this.shape.findEdge(v1, v0);
@@ -125,7 +136,7 @@ export class CurtainWall {
 	}
 
 	public borders(p: Patch): boolean {
-		const withinWalls = this.patches.includes(p);
+		const withinWalls = this.patches.findIndex(x => x.equals(p)) !== -1;
 		const length = this.shape.vertices.length;
 
 		for (let i = 0; i < length; i++) {

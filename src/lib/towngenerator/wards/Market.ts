@@ -1,7 +1,8 @@
 import { GeomUtils } from "$lib/geom/GeomUtils";
-import type { Point } from "$lib/geom/Point";
+import type { PatchPoint } from "$lib/geom/PatchPolygon";
 import { Polygon } from "$lib/geom/Polygon";
 import { Random } from "$lib/utils/Random";
+import { Building } from "../building/Building";
 import type { Model } from "../building/Model";
 import type { Patch } from "../building/Patch";
 import { Ward } from "./Ward";
@@ -13,12 +14,12 @@ export class Market extends Ward {
 		// we always offset a statue and sometimes a fountain
 		const offset = statue || Random.bool(0.3);
 
-		let v0: Point | null = null;
-		let v1: Point | null = null;
+		let v0: PatchPoint | null = null;
+		let v1: PatchPoint | null = null;
 		if (statue || offset) {
 			// we need an edge both for rotating a statue and offsetting
 			let length = -1.0;
-			this.patch.shape.forEdge((p0: Point, p1: Point) => {
+			this.patch.shape.forEdge((p0, p1) => {
 				const len = p0.distance(p1);
 				if (len > length) {
 					length = len;
@@ -49,7 +50,7 @@ export class Market extends Ward {
 			object.offset(this.patch.shape.centroid);
 		}
 
-		this.geometry = [object];
+		this.geometry = [new Building([object])];
 	}
 
 	static rateLocation(model: Model, patch: Patch): number {

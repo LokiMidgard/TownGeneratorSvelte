@@ -55,7 +55,7 @@ export class Cutter {
 
 		const sectors: Polygon[] = [];
 		poly.forEdge((v0: Point, v1: Point) => {
-			if (v0 !== center && v1 !== center) {
+			if (!v0.equals(center) && !v1.equals(center)) {
 				let sector = new Polygon([center!, v0, v1]);
 				if (gap > 0) {
 					const d = [

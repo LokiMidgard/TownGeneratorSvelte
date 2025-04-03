@@ -3,12 +3,20 @@ import { Rectangle } from './Rectangle'; // Assuming Rectangle is defined in a s
 import { MathUtils } from '$lib/utils/MathUtils'; // Assuming MathUtils is defined in a separate file
 import { GeomUtils } from './GeomUtils';
 
+
 export class Polygon {
 	private static readonly DELTA = 0.000001;
-	public vertices: Point[];
+	private _vertices: Point[];
+
+	public get vertices(): Point[] {
+		return this._vertices;
+	}
+	public set vertices(v: Point[]) {
+		this._vertices = [...v.map(x => x.clone())];
+	}
 
 	constructor(vertices: Point[] = []) {
-		this.vertices = vertices.slice();
+		this._vertices = vertices.slice();
 	}
 
 	clone(): Polygon {
@@ -47,11 +55,11 @@ export class Polygon {
 	}
 
 	get center(): Point {
-		const c = new Point(0, 0);
+		let c = new Point(0, 0);
 		for (const v of this.vertices) {
-			c.addEq(v);
+			c = c.add(v);
 		}
-		c.scaleEq(1 / this.vertices.length);
+		c = c.scale(1 / this.vertices.length);
 		return c;
 	}
 
@@ -69,8 +77,10 @@ export class Polygon {
 		return new Point(s6 * x, s6 * y);
 	}
 
-	contains(v: Point): boolean {
-		return this.vertices.includes(v);
+
+	
+	containsDefiningVertex(v: Point): boolean {
+		return this.vertices.findIndex(p => p.equals(v)) !== -1;
 	}
 
 	forEdge(f: (v0: Point, v1: Point) => void): void {
@@ -89,19 +99,22 @@ export class Polygon {
 	offset(p: Point): void {
 		const dx = p.x;
 		const dy = p.y;
-		for (const v of this.vertices) {
-			v.offsetEq(dx, dy);
-		}
+
+		const newVertices = this.vertices.map(v => v.offset(dx, dy));
+		this._vertices = newVertices;
 	}
 
 	rotate(a: number): void {
 		const cosA = Math.cos(a);
 		const sinA = Math.sin(a);
-		for (const v of this.vertices) {
+
+		const newVertices = this.vertices.map(v => {
 			const vx = v.x * cosA - v.y * sinA;
 			const vy = v.y * cosA + v.x * sinA;
-			v.setTo(vx, vy);
-		}
+			return new Point(vx, vy);
+		});
+
+		this._vertices = newVertices;
 	}
 
 	isConvexVertexi(i: number): boolean {
@@ -192,7 +205,7 @@ export class Polygon {
 	}
 
 	inset(p1: Point, d: number): void {
-		const i1 = this.vertices.indexOf(p1);
+		const i1 = this.vertices.findIndex(ppppp => ppppp.equals(p1));
 		const i0 = i1 > 0 ? i1 - 1 : this.vertices.length - 1;
 		const p0 = this.vertices[i0];
 		const i2 = i1 < this.vertices.length - 1 ? i1 + 1 : 0;
@@ -316,8 +329,8 @@ export class Polygon {
 
 				const next = (i + 1) % q.vertices.length;
 				const v = q.vertices[next];
-				const next1 = q.vertices.indexOf(v);
-				i = next1 === next ? q.vertices.lastIndexOf(v) : next1 === -1 ? next : next1;
+				const next1 = q.vertices.findIndex(ppppp => ppppp.equals(v));
+				i = next1 === next ? q.vertices.findLastIndex(ppppp => ppppp.equals(v)) : next1 === -1 ? next : next1;
 			} while (i !== start);
 
 			const p = new Polygon(indices.map((index) => q.vertices[index]));
@@ -331,8 +344,40 @@ export class Polygon {
 		return bestPart!;
 	}
 
+	/**
+	 * Creates a new polygon by buffering all vertices of this polygon by the same distance.
+	 * 
+	 * @param d - The uniform distance to buffer each vertex by
+	 * @returns A new Polygon instance with all vertices buffered equally
+	 */
 	bufferEq(d: number): Polygon {
 		return this.buffer(Array.from({ length: this.vertices.length }, () => d));
+	}
+
+
+	inflate(d: number[]): Polygon {
+		const q = new Polygon(this.vertices);
+		let i = 0;
+		const center = this.centroid;
+		for (const v of q.vertices) {
+			const dd = d[i++];
+			if (dd > 0) {
+				const v1 = v.subtract(center);
+				const v2 = v1.scale(dd);
+				q.vertices[i - 1] = center.add(v2);
+			}
+		}
+
+		return q;
+	}
+	/**
+	 * Inflates the polygon by a uniform distance.
+	 * 
+	 * @param d - The distance by which to inflate the polygon uniformly.
+	 * @returns A new polygon that is inflated by the specified distance at all vertices.
+	 */
+	inflateEq(d: number): Polygon {
+		return this.inflate(Array.from({ length: this.vertices.length }, () => d));
 	}
 
 	shrink(d: number[]): Polygon {
@@ -349,12 +394,29 @@ export class Polygon {
 		return q;
 	}
 
+	/**
+	 * Shrinks the polygon by a uniform distance.
+	 * 
+	 * @param d - The distance by which to shrink the polygon uniformly.
+	 * @returns A new polygon that is shrunk by the specified distance at all vertices.
+	 */
 	shrinkEq(d: number): Polygon {
 		return this.shrink(Array.from({ length: this.vertices.length }, () => d));
 	}
 
+	/**
+	 * Creates a new polygon by "peeling" off a strip of width `d` starting from a specific vertex.
+	 * 
+	 * This method identifies an edge of the polygon starting at vertex `v1`, then creates a new polygon
+	 * by cutting the original polygon along a line parallel to this edge, at distance `d` perpendicular
+	 * to the edge.
+	 * 
+	 * @param v1 - The starting vertex of the edge to peel from
+	 * @param d - The perpendicular distance from the edge to cut the new polygon
+	 * @returns A new polygon created by cutting the original polygon
+	 */
 	peel(v1: Point, d: number): Polygon {
-		const i1 = this.vertices.indexOf(v1);
+		const i1 = this.vertices.findIndex(ppppp => ppppp.equals(v1));
 		const i2 = i1 === this.vertices.length - 1 ? 0 : i1 + 1;
 		const v2 = this.vertices[i2];
 
@@ -391,19 +453,19 @@ export class Polygon {
 	}
 
 	findEdge(a: Point, b: Point): number {
-		const index = this.vertices.indexOf(a);
-		return index !== -1 && this.vertices[(index + 1) % this.vertices.length] === b
+		const index = this.vertices.findIndex(p => p.equals(a));
+		return index !== -1 && this.vertices[(index + 1) % this.vertices.length].equals(b)
 			? index
 			: -1;
 	}
 
 	next(a: Point): Point {
-		return this.vertices[(this.vertices.indexOf(a) + 1) % this.vertices.length];
+		return this.vertices[(this.vertices.findIndex(ppppp => ppppp.equals(a)) + 1) % this.vertices.length];
 	}
 
 	prev(a: Point): Point {
 		return this.vertices[
-			(this.vertices.indexOf(a) + this.vertices.length - 1) % this.vertices.length
+			(this.vertices.findIndex(ppppp => ppppp.equals(a)) + this.vertices.length - 1) % this.vertices.length
 		];
 	}
 
@@ -421,12 +483,12 @@ export class Polygon {
 		const len1 = this.vertices.length;
 		const len2 = another.vertices.length;
 		for (let i = 0; i < len1; i++) {
-			const j = another.vertices.indexOf(this.vertices[i]);
+			const j = another.vertices.findIndex(ppppp => ppppp.equals(this.vertices[i]));
 			if (j !== -1) {
 				const next = this.vertices[(i + 1) % len1];
 				if (
-					next === another.vertices[(j + 1) % len2] ||
-					next === another.vertices[(j + len2 - 1) % len2]
+					next.equals(another.vertices[(j + 1) % len2]) ||
+					next.equals(another.vertices[(j + len2 - 1) % len2])
 				)
 					return true;
 			}
@@ -446,7 +508,7 @@ export class Polygon {
 	}
 
 	split(p1: Point, p2: Point): Polygon[] {
-		return this.spliti(this.vertices.indexOf(p1), this.vertices.indexOf(p2));
+		return this.spliti(this.vertices.findIndex(ppppp => ppppp.equals(p1)), this.vertices.findIndex(ppppp => ppppp.equals(p2)));
 	}
 
 	spliti(i1: number, i2: number): Polygon[] {

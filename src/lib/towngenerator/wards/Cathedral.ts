@@ -4,12 +4,14 @@ import { Patch } from "../building/Patch";
 import { Model } from "../building/Model";
 import { Ward } from "./Ward";
 import { Random } from "$lib/utils/Random";
+import { Building } from "../building/Building";
 
 export class Cathedral extends Ward {
 	override createGeometry(): void {
-		this.geometry = Random.bool(0.4)
-			? Cutter.ring(this.getCityBlock(), 2 + Random.float() * 4)
-			: Ward.createOrthoBuilding(this.getCityBlock(), 50, 0.8);
+		const cityBlock = this.getCityBlock().inflateEq(0.8);
+		this.geometry = [new Building(Random.bool(0.4)
+			? Cutter.ring(cityBlock, 2 + Random.float() * 4)
+			: Ward.createOrthoBuilding(cityBlock, 50, 0.8))];
 	}
 
 	public static rateLocation(model: Model, patch: Patch): number {

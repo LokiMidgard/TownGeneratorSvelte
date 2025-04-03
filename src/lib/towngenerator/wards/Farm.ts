@@ -1,6 +1,7 @@
 import { GeomUtils } from "$lib/geom/GeomUtils";
 import { Polygon } from "$lib/geom/Polygon";
 import { Random } from "$lib/utils/Random";
+import { Building } from "../building/Building";
 import { Ward } from "./Ward";
 
 export class Farm extends Ward {
@@ -14,7 +15,7 @@ export class Farm extends Ward {
 		housing.rotate(Random.float() * Math.PI);
 		housing.offset(pos);
 
-		this.geometry = Ward.createOrthoBuilding(housing, 8, 0.5);
+		this.geometry = [new Building(Ward.createOrthoBuilding(housing, 8, 0.5))];
 	}
 
 	override getLabel(): string {

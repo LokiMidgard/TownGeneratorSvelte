@@ -2,7 +2,7 @@ import { Patch } from "../building/Patch";
 import { Model } from "../building/Model";
 import { CurtainWall } from "../building/CurtainWall";
 import { Ward } from "./Ward";
-import type { Point } from "$lib/geom/Point";
+import { Building } from "../building/Building";
 
 export class Castle extends Ward {
 	public wall: CurtainWall;
@@ -14,19 +14,19 @@ export class Castle extends Ward {
 			true,
 			model,
 			[patch],
-			patch.shape.vertices.filter((v: Point) =>
+			patch.shape.vertices.filter((v) =>
 				model.patchByVertex(v).some((p: Patch) => !p.withinCity)
 			)
 		);
 	}
 
 	override createGeometry(): void {
-		const block = this.patch.shape.shrinkEq(Ward.MAIN_STREET * 2);
-		this.geometry = Ward.createOrthoBuilding(
+		const block = this.patch.shape.createShrinkedPolygon(Ward.MAIN_STREET * 2);
+		this.geometry = [new Building(Ward.createOrthoBuilding(
 			block,
 			Math.sqrt(block.square) * 4,
 			0.6
-		);
+		))];
 	}
 
 	override getLabel(): string {

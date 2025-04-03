@@ -6,7 +6,6 @@ import { Point } from '$lib/geom/Point';
 import { Random } from '$lib/utils/Random';
 import { Voronoi } from '$lib/geom/Voronoi';
 import { MathUtils } from '$lib/utils/MathUtils';
-import { Polygon } from '$lib/geom/Polygon';
 import { Segment } from '$lib/geom/Segment';
 import { Castle } from '../wards/Castle';
 import { Ward } from '../wards/Ward';
@@ -21,8 +20,10 @@ import { Park } from '../wards/Park';
 import { Cathedral } from '../wards/Cathedral';
 import { GateWard } from '../wards/GateWard';
 import { Farm } from '../wards/Farm';
+import { PatchPolygon, type PatchPoint } from '$lib/geom/PatchPolygon';
+import { Building, MultiPolygon } from './Building';
 
-type Street = Polygon;
+type Street = PatchPolygon;
 
 export class Model {
 	public static instance: Model;
@@ -48,13 +49,13 @@ export class Model {
 	public inner: Array<Patch> = [];
 	public citadel: Patch | null = null;
 	public plaza: Patch | null = null;
-	public center: Point = null!;
+	public center: PatchPoint = null!;
 
 	public border: CurtainWall | null = null;
 	public wall: CurtainWall | null = null;
 
 	public cityRadius: number = 0;
-	public gates: Array<Point> = [];
+	public gates: Array<PatchPoint> = [];
 	public arteries: Array<Street> = [];
 	public streets: Array<Street> = [];
 	public roads: Array<Street> = [];
@@ -65,7 +66,7 @@ export class Model {
 
 		this.plazaNeeded = Random.bool();
 		this.citadelNeeded = Random.bool();
-		this.wallsNeeded = Random.bool();
+		this.wallsNeeded = Random.bool() || true;
 
 		do {
 			try {
@@ -88,6 +89,7 @@ export class Model {
 		this.buildStreets();
 		this.createWards();
 		this.buildGeometry();
+		return;
 	}
 
 	private buildPatches(): void {
@@ -112,12 +114,12 @@ export class Model {
 		this.inner = [];
 
 		let count = 0;
-		for (const r of regions) {
-			const patch = Patch.fromRegion(r);
-			this.patches.push(patch);
+		this.patches = Patch.create(regions);
+
+		for (const patch of this.patches) {
 
 			if (count === 0) {
-				this.center = patch.shape.min((p: Point) => p.length);
+				this.center = patch.shape.min((p) => p.length);
 				if (this.plazaNeeded) this.plaza = patch;
 			} else if (count === this.nPatches && this.citadelNeeded) {
 				this.citadel = patch;
@@ -135,7 +137,7 @@ export class Model {
 	}
 
 	private buildWalls(): void {
-		const reserved = this.citadel ? this.citadel.shape.clone().vertices : [];
+		const reserved = this.citadel ? this.citadel.shape.vertices : [];
 
 		this.border = new CurtainWall(this.wallsNeeded, this, this.inner, reserved);
 		if (this.wallsNeeded) {
@@ -161,65 +163,36 @@ export class Model {
 		}
 	}
 
-	public static findCircumference(wards: Array<Patch>): Polygon {
-		if (wards.length === 0) return new Polygon();
-		if (wards.length === 1) return wards[0].shape.clone();
 
-		const A: Array<Point> = [];
-		const B: Array<Point> = [];
 
-		for (const w1 of wards) {
-			w1.shape.forEdge((a, b) => {
-				let outerEdge = true;
-				for (const w2 of wards) {
-					if (w2.shape.findEdge(b, a) !== -1) {
-						outerEdge = false;
-						break;
-					}
-				}
-				if (outerEdge) {
-					A.push(a);
-					B.push(b);
-				}
-			});
-		}
-
-		const result = new Polygon();
-		let index = 0;
-		do {
-			result.vertices.push(A[index]);
-			index = A.indexOf(B[index]);
-		} while (index !== 0);
-
-		return result;
+	public patchByVertex(v: PatchPoint): Array<Patch> {
+		return this.patches.filter(patch => patch.shape.containsDefiningVertex(v));
 	}
 
-	public patchByVertex(v: Point): Array<Patch> {
-		return this.patches.filter(patch => patch.shape.contains(v));
+	public splitPatch(patch: Patch, v0: PatchPoint, v1: PatchPoint): void {
+		const splited = patch.split(v0, v1);
+		this.patches.splice(this.patches.indexOf(patch), 1, ...splited);
 	}
 
 	private buildStreets(): void {
 		const smoothStreet = (street: Street): void => {
-			const smoothed = street.smoothVertexEq(3);
-			for (let i = 1; i < street.vertices.length - 1; i++) {
-				street.vertices[i] = smoothed.vertices[i];
-			}
+			street.smoothVertexes(3, Array.from({ length: street.vertices.length - 2 }).map((_, i) => i + 1));
 		};
 
 		this.topology = new Topology(this);
 
 		for (const gate of this.gates) {
 			const end = this.plaza
-				? this.plaza.shape.min((v: Point) => v.distance(gate))
+				? this.plaza.shape.min((v) => v.distance(gate))
 				: this.center!;
 
 			const street = this.topology.buildPath(gate, end, this.topology.outer);
 			if (street) {
-				this.streets.push(new Polygon(street));
+				this.streets.push(new PatchPolygon(street));
 
 				if (this.border!.gates.includes(gate)) {
-					const dir = gate.norm(1000);
-					let start: Point | null = null;
+					const dir = gate.toPoint().norm(1000);
+					let start: PatchPoint | null = null;
 					let dist = Number.POSITIVE_INFINITY;
 					for (const [, p] of this.topology.node2pt) {
 						const d = p.distance(dir);
@@ -230,7 +203,7 @@ export class Model {
 					}
 
 					const road = this.topology.buildPath(start!, gate, this.topology.inner);
-					if (road) this.roads.push(new Polygon(road));
+					if (road) this.roads.push(new PatchPolygon(road));
 				}
 			} else {
 				throw new Error("Unable to build a street!");
@@ -247,13 +220,13 @@ export class Model {
 	private tidyUpRoads(): void {
 		const segments: Array<Segment> = [];
 		const cut2segments = (street: Street): void => {
-			let v0: Point | null = null;
-			let v1: Point = street.vertices[0];
+			let v0: PatchPoint | null = null;
+			let v1: PatchPoint = street.vertices[0];
 			for (let i = 1; i < street.vertices.length; i++) {
 				v0 = v1;
 				v1 = street.vertices[i];
 
-				if (this.plaza && this.plaza.shape.contains(v0) && this.plaza.shape.contains(v1)) {
+				if (this.plaza && this.plaza.shape.containsDefiningVertex(v0) && this.plaza.shape.containsDefiningVertex(v1)) {
 					continue;
 				}
 
@@ -288,7 +261,7 @@ export class Model {
 			}
 
 			if (!attached) {
-				this.arteries.push(new Polygon([seg.start, seg.end]));
+				this.arteries.push(new PatchPolygon([seg.start, seg.end]));
 			}
 		}
 	}
@@ -303,23 +276,27 @@ export class Model {
 				const v0 = w.shape.vertices[index];
 				const v1 = w.shape.vertices[(index + 1) % w.shape.vertices.length];
 
-				if (v0 !== v1 && v0.distance(v1) < 8) {
-					for (const w1 of this.patchByVertex(v1)) {
-						if (w1 !== w) {
-							w1.shape.vertices[w1.shape.vertices.findIndex(x => x.equals(v1))] = v0;
-							wards2clean.push(w1);
-						}
+				if (v0 !== (v1) && v0.distance(v1) < 8) {
+					const newV = v0.toPoint().add(v1).scale(0.5);
+					v0.moveTo(newV);
+					for (const patch of this.patchByVertex(v1)) {
+						// replace all v1 with v0
+						// so we no longer have v1 in any patch
+						patch.shape.vertices[patch.shape.vertices.indexOf(v1)] = v0;
+						// we may have v0 multiple times in one patch, but
+						// in the second step we will remove duplicates
+						wards2clean.push(patch);
 					}
 
-					v0.addEq(v1);
-					v0.scaleEq(0.5);
 
-					w.shape.vertices.splice(index, 1);
+					v0.moveTo(newV);
+
 				}
 				index++;
 			}
 		}
 
+		// now we remove the duplicates
 		for (const w of wards2clean) {
 			for (let i = 0; i < w.shape.vertices.length; i++) {
 				const v = w.shape.vertices[i];
@@ -327,6 +304,7 @@ export class Model {
 				while ((dupIdx = w.shape.vertices.indexOf(v, i + 1)) !== -1) {
 					w.shape.vertices.splice(dupIdx, 1);
 				}
+
 			}
 		}
 	}
@@ -342,7 +320,7 @@ export class Model {
 			for (const patch of this.patchByVertex(gate)) {
 				if (patch.withinCity && !patch.ward && Random.bool(this.wall ? 0.5 : 0.2)) {
 					patch.ward = new GateWard(this, patch);
-					unassigned.splice(unassigned.indexOf(patch), 1);
+					unassigned.splice(unassigned.findIndex(ppppp => ppppp.equals(patch)), 1);
 				}
 			}
 		}
@@ -376,7 +354,7 @@ export class Model {
 			}
 
 			bestPatch!.ward = new wardClass(this, bestPatch!);
-			unassigned.splice(unassigned.indexOf(bestPatch!), 1);
+			unassigned.splice(unassigned.findIndex(ppppp => ppppp.equals(bestPatch!)), 1);
 		}
 
 		if (this.wall) {
@@ -412,7 +390,7 @@ export class Model {
 		}
 	}
 
-	public getNeighbour(patch: Patch, v: Point): Patch | null {
+	public getNeighbour(patch: Patch, v: PatchPoint): Patch | null {
 		const next = patch.shape.next(v);
 		for (const p of this.patches) {
 			if (p.shape.findEdge(next, v) !== -1) {
@@ -423,7 +401,7 @@ export class Model {
 	}
 
 	public getNeighbours(patch: Patch): Array<Patch> {
-		return this.patches.filter(p => p !== patch && p.shape.borders(patch.shape));
+		return this.patches.filter(p => !p.equals(patch) && p.shape.borders(patch.shape));
 	}
 
 	public isEnclosed(patch: Patch): boolean {

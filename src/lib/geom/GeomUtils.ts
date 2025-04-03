@@ -1,3 +1,4 @@
+import type { IPointLike, PatchPoint } from "./PatchPolygon";
 import { Point } from "./Point";
 
 export class GeomUtils {
@@ -15,8 +16,8 @@ export class GeomUtils {
 
 		return new Point(t1, t2);
 	}
-	public static interpolate(p1: Point, p2: Point, ratio = 0.5): Point {
-		const d = p2.subtract(p1);
+	public static interpolate(p1: IPointLike, p2: IPointLike, ratio = 0.5): Point {
+		const d = new Point(p2.x - p1.x, p2.y - p1.y);
 		return new Point(p1.x + d.x * ratio, p1.y + d.y * ratio);
 	}
 	public static scalar(x1: number, y1: number, x2: number, y2: number): number {

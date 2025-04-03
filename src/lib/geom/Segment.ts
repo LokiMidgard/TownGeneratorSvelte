@@ -1,11 +1,12 @@
+import type { PatchPoint } from "./PatchPolygon";
 import { Point } from "./Point";
 
 
 export class Segment {
-	public start: Point;
-	public end: Point;
+	public start: PatchPoint;
+	public end: PatchPoint;
 
-	constructor(start: Point, end: Point) {
+	constructor(start: PatchPoint, end: PatchPoint) {
 		this.start = start;
 		this.end = end;
 	}

@@ -6,6 +6,8 @@ import type { Polygon } from '$lib/geom/Polygon';
 import type { Model } from '../building/Model';
 import type { Point } from '$lib/geom/Point';
 import { GeomUtils } from '$lib/geom/GeomUtils';
+import type { PatchPoint } from '$lib/geom/PatchPolygon';
+import { Building } from '../building/Building';
 
 export class Ward {
     // Static constants
@@ -16,7 +18,7 @@ export class Ward {
     // Properties
     public model: Model;
     public patch: Patch;
-    public geometry: Polygon[] = [];
+    public geometry: (Building)[] = [];
 
     constructor(model: Model, patch: Patch) {
         this.model = model;
@@ -31,7 +33,7 @@ export class Ward {
         const insetDist: number[] = [];
 
         const innerPatch = this.model.wall == null || this.patch.withinWalls;
-        this.patch.shape.forEdge((v0: Point, v1: Point) => {
+        this.patch.shape.forEdge((v0: PatchPoint, v1: PatchPoint) => {
             if (this.model.wall != null && this.model.wall.bordersBy(this.patch, v0, v1)) {
                 // Not too close to the wall
                 insetDist.push(Ward.MAIN_STREET / 2);
@@ -39,7 +41,7 @@ export class Ward {
                 let onStreet = innerPatch && (this.model.plaza != null && this.model.plaza.shape.findEdge(v1, v0) != -1);
                 if (!onStreet) {
                     for (const street of this.model.arteries) {
-                        if (street.contains(v0) && street.contains(v1)) {
+                        if (street.containsDefiningVertex(v0) && street.containsDefiningVertex(v1)) {
                             onStreet = true;
                             break;
                         }
@@ -50,19 +52,19 @@ export class Ward {
         });
 
         return this.patch.shape.isConvex() ?
-            this.patch.shape.shrink(insetDist) :
-            this.patch.shape.buffer(insetDist);
+            this.patch.shape.createShrinkedPolygon(insetDist) :
+            this.patch.shape.createBufferedPolygon(insetDist);
     }
 
     protected filterOutskirts(): void {
         const populatedEdges: Array<{ x: number, y: number, dx: number, dy: number, d: number }> = [];
 
-        const addEdge = (v1: Point, v2: Point, factor: number = 1.0) => {
+        const addEdge = (v1: PatchPoint, v2: PatchPoint, factor: number = 1.0) => {
             const dx = v2.x - v1.x;
             const dy = v2.y - v1.y;
-            const distances = new Map<Point, number>();
+            const distances = new Map<PatchPoint, number>();
 
-            const d = this.patch.shape.max((v: Point) => {
+            const d = this.patch.shape.max((v: PatchPoint) => {
                 return distances.set(v, (v != v1 && v != v2 ?
                     GeomUtils.distance2line(v1.x, v1.y, dx, dy, v.x, v.y) : 0) * factor).get(v) || 0;
             });
@@ -70,10 +72,10 @@ export class Ward {
             populatedEdges.push({ x: v1.x, y: v1.y, dx: dx, dy: dy, d: distances.get(d) || 0 });
         };
 
-        this.patch.shape.forEdge((v1: Point, v2: Point) => {
+        this.patch.shape.forEdge((v1, v2) => {
             let onRoad = false;
             for (const street of this.model.arteries) {
-                if (street.contains(v1) && street.contains(v2)) {
+                if (street.containsDefiningVertex(v1) && street.containsDefiningVertex(v2)) {
                     onRoad = true;
                     break;
                 }
@@ -103,10 +105,10 @@ export class Ward {
             }
         }
 
-        this.geometry = this.geometry.filter((building: Polygon) => {
+        this.geometry = this.geometry.filter((building) => {
             let minDist = 1.0;
             for (const edge of populatedEdges) {
-                for (const v of building.vertices) {
+                for (const v of building.polygons.flatMap(x => x.pathes).map(x => x.vertices).flat()) {
                     // Distance from the center of the building to the edge
                     const d = GeomUtils.distance2line(edge.x, edge.y, edge.dx, edge.dy, v.x, v.y);
                     const dist = d / edge.d;
@@ -144,7 +146,7 @@ export class Ward {
         sizeChaos: number,
         emptyProb: number = 0.04,
         split: boolean = true
-    ): Polygon[] {
+    ): Building[] {
         // Looking for the longest edge to cut it
         let v: Point | null = null;
         let length = -1.0;
@@ -166,11 +168,11 @@ export class Ward {
 
         const halves = Cutter.bisect(p, v!, ratio, b, split ? Ward.ALLEY : 0.0);
 
-        const buildings: Polygon[] = [];
+        const buildings: Building[] = [];
         for (const half of halves) {
             if (half.square < minSq * Math.pow(2, 4 * sizeChaos * (Random.float() - 0.5))) {
                 if (!Random.bool(emptyProb)) {
-                    buildings.push(half);
+                    buildings.push(new Building([half]));
                 }
             } else {
                 buildings.push(...Ward.createAlleys(

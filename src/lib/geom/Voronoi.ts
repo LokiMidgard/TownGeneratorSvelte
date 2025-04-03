@@ -51,7 +51,7 @@ export class Voronoi {
 			for (const t1 of toSplit) {
 				let e1 = true, e2 = true, e3 = true;
 				for (const t2 of toSplit) {
-					if (t2 !== t1) {
+					if (!t2.equals(t1)) {
 						if (e1 && t2.hasEdge(t1.p2, t1.p1)) e1 = false;
 						if (e2 && t2.hasEdge(t1.p3, t1.p2)) e2 = false;
 						if (e3 && t2.hasEdge(t1.p1, t1.p3)) e3 = false;
@@ -66,11 +66,11 @@ export class Voronoi {
 			let index = 0;
 			do {
 				this.triangles.push(new Triangle(p, a[index], b[index]));
-				index = a.indexOf(b[index]);
+				index = a.findIndex(ppppp => ppppp.equals(b[index]));
 			} while (index !== 0);
 
 			for (const tr of toSplit) {
-				this.triangles.splice(this.triangles.indexOf(tr), 1);
+				this.triangles.splice(this.triangles.findIndex(ppppp => ppppp.equals(tr)), 1);
 			}
 
 			this._regionsDirty = true;
@@ -80,7 +80,7 @@ export class Voronoi {
 	private buildRegion(p: Point): Region {
 		const r = new Region(p);
 		for (const tr of this.triangles) {
-			if (tr.p1 === p || tr.p2 === p || tr.p3 === p) {
+			if (tr.p1.equals(p) || tr.p2.equals(p) || tr.p3.equals(p)) {
 				r.vertices.push(tr);
 			}
 		}
@@ -88,7 +88,7 @@ export class Voronoi {
 	}
 
 	private isReal(tr: Triangle): boolean {
-		return !this.frame.includes(tr.p1) && !this.frame.includes(tr.p2) && !this.frame.includes(tr.p3);
+		return this.frame.findIndex(p => p.equals(tr.p1)) === -1 && this.frame.findIndex(p => p.equals(tr.p2)) === -1 && this.frame.findIndex(p => p.equals(tr.p3)) === -1;
 	}
 
 	triangulation(): Triangle[] {
@@ -121,14 +121,14 @@ export class Voronoi {
 		const regions = voronoi.partioning();
 		const points = [...voronoi.points];
 		for (const p of voronoi.frame) {
-			const index = points.indexOf(p);
+			const index = points.findIndex(ppppp => ppppp.equals(p));
 			if (index !== -1) points.splice(index, 1);
 		}
 
 		if (!toRelax) toRelax = voronoi.points;
 		for (const r of regions) {
-			if (toRelax.includes(r.seed)) {
-				const index = points.indexOf(r.seed);
+			if (toRelax.findIndex(p => p.equals(r.seed)) !== -1) {
+				const index = points.findIndex(ppppp => ppppp.equals(r.seed));
 				if (index !== -1) points.splice(index, 1);
 				points.push(r.center());
 			}
@@ -189,10 +189,24 @@ class Triangle {
 
 	hasEdge(a: Point, b: Point): boolean {
 		return (
-			(this.p1 === a && this.p2 === b) ||
-			(this.p2 === a && this.p3 === b) ||
-			(this.p3 === a && this.p1 === b)
+			(this.p1.equals(a) && this.p2.equals(b)) ||
+			(this.p2.equals(a) && this.p3.equals(b)) ||
+			(this.p3.equals(a) && this.p1.equals(b))
 		);
+	}
+
+	equals(tr: Triangle | null): boolean {
+		if (this === tr) return true;
+		if (!tr) return false;
+		if (this.p1.equals(tr.p1) && this.p2.equals(tr.p2) && this.p3.equals(tr.p3)) return true;
+		if (this.p1.equals(tr.p2) && this.p2.equals(tr.p3) && this.p3.equals(tr.p1)) return true;
+		if (this.p1.equals(tr.p3) && this.p2.equals(tr.p1) && this.p3.equals(tr.p2)) return true;
+		if (this.p1.equals(tr.p2) && this.p2.equals(tr.p1) && this.p3.equals(tr.p3)) return true;
+		if (this.p1.equals(tr.p3) && this.p2.equals(tr.p2) && this.p3.equals(tr.p1)) return true;
+		if (this.p1.equals(tr.p1) && this.p2.equals(tr.p3) && this.p3.equals(tr.p2)) return true;
+
+		return false;
+
 	}
 }
 
@@ -211,11 +225,11 @@ export class Region {
 	}
 
 	center(): Point {
-		const c = new Point();
+		let c = new Point();
 		for (const v of this.vertices) {
-			c.addEq(v.c);
+			c = c.add(v.c);
 		}
-		c.scaleEq(1 / this.vertices.length);
+		c = c.scale(1 / this.vertices.length);
 		return c;
 	}
 
@@ -223,9 +237,9 @@ export class Region {
 		const len1 = this.vertices.length;
 		const len2 = r.vertices.length;
 		for (let i = 0; i < len1; i++) {
-			const j = r.vertices.indexOf(this.vertices[i]);
+			const j = r.vertices.findIndex(ppppp => ppppp.equals(this.vertices[i]));
 			if (j !== -1) {
-				return this.vertices[(i + 1) % len1] === r.vertices[(j + len2 - 1) % len2];
+				return this.vertices[(i + 1) % len1].equals(r.vertices[(j + len2 - 1) % len2]);
 			}
 		}
 		return false;
