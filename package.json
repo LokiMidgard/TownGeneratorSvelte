@@ -32,6 +32,8 @@
 		"vite": "^6.0.0"
 	},
 	"dependencies": {
+		"@types/js-clipper": "^0.0.32",
+		"js-clipper": "^1.0.1",
 		"martinez-polygon-clipping": "^0.7.4",
 		"sass-embedded": "^1.86.0",
 		"zod": "^3.24.2"

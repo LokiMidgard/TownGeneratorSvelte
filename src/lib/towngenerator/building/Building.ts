@@ -1,5 +1,6 @@
 import { Point } from "$lib/geom/Point";
 import { Polygon } from "$lib/geom/Polygon";
+import "js-clipper";
 import * as martinez from "martinez-polygon-clipping";
 
 
@@ -84,6 +85,10 @@ export class MultiPolygon {
     public get center() {
         return areaWeightedCentroid(this.pathes[0].vertices);
     }
+    public test() {
+
+
+    }
 
     public createShrinkedPolygon(shrink: number) {
         const shrinkedPathes = this._pathes.map(({ vertices }) => {
@@ -152,6 +157,10 @@ function simplifyPolygon(vertices: Point[], threshold: number): Point[] {
 }
 
 function shrinkPolygon(vertices: Point[], shrink: number): Point[] {
+
+    if (vertices.length <= 2) {
+        return vertices.map(x => x.clone());
+    }
     const newVertices: Point[] = [];
     const numVertices = vertices.length;
 
@@ -160,18 +169,31 @@ function shrinkPolygon(vertices: Point[], shrink: number): Point[] {
         const current = vertices[i];
         const next = vertices[(i + 1) % numVertices];
 
-        // Berechne Normalen für beide angrenzenden Kanten
-        const normal1 = edgeNormal(prev, current);
-        const normal2 = edgeNormal(current, next);
 
-        // Mittlere Normale bestimmen (um sanfte Übergänge zu ermöglichen)
-        const bisector = normal1.add(normal2).norm(1);
+        const v1 = current.subtract(prev).norm(1); // vorherige Kante
+        const v2 = next.subtract(current).norm(1); // nächste Kante
 
-        // Punkt entlang der Normalen verschieben
-        newVertices.push(current.add(bisector.scale(shrink)));
+        const bisector =
+            isConvex(prev, current, next) ?
+                v2.subtract(v1).norm()
+                : v2.subtract(v1).norm(-1); // Winkelhalbierende
+
+        // Berechne den Winkel zwischen den Kanten
+        const angle = Math.acos(v1.scale(-1).dot(v2));
+        const offsetLength = shrink / Math.sin(angle / 2);
+
+        const offset = bisector.scale(offsetLength);
+        newVertices.push(current.add(offset));
+
     }
 
     return newVertices;
+}
+function isConvex(prev: Point, current: Point, next: Point): boolean {
+    const a = current.subtract(prev);
+    const b = next.subtract(current);
+    const cross = a.crossProduct(b); // z-Komponente (nur 2D relevant)
+    return cross > 0; // je nach Polygon-Orientierung: true = konvex
 }
 
 // Berechnet die Normale einer Kante
